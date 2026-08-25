@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>NEON ASTRIA — Character Collection Prototype</title>
+  <style>
+    * { box-sizing: border-box; } html, body { width:100%; height:100%; margin:0; overflow:hidden; background:#050713; }
+    canvas { width:100%; height:100%; display:block; touch-action:manipulation; cursor:default; }
+  </style>
+</head>
+<body><canvas id="game" aria-label="NEON ASTRIA character collection game"></canvas>
+<script>
+(() => {
+  'use strict';
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const KEY = 'neonAstriaMvpState_v1';
+  const COLORS = { Fire:'#ff6a9e', Ice:'#62d8ff', Lightning:'#b58aff', Wind:'#61f5c0', Earth:'#e9b56d', Light:'#ffe46f' };
+  const RARITY = { SSR:'#ffc866', SR:'#c899ff', R:'#78dfff' };
+  const characters = [
+    {id:'sola', name:'Sola', rarity:'SSR', element:'Fire', description:'성운 화염을 다루는 전방 전술가', hair:'#ff8a9b', accent:'#ffcf72'},
+    {id:'nive', name:'Nive', rarity:'SSR', element:'Ice', description:'빙결 드론을 지휘하는 장거리 분석가', hair:'#a6eaff', accent:'#596eff'},
+    {id:'rei', name:'Rei', rarity:'SR', element:'Lightning', description:'번개 회로를 두른 민첩한 정찰가', hair:'#c3a5ff', accent:'#ffe46d'},
+    {id:'vella', name:'Vella', rarity:'SR', element:'Wind', description:'공명 바람을 타는 항공 항법사', hair:'#8af0cb', accent:'#66dfff'},
+    {id:'terra', name:'Terra', rarity:'R', element:'Earth', description:'지층 방벽을 만드는 현장 기술자', hair:'#e9bc8b', accent:'#8ed17d'},
+    {id:'lumi', name:'Lumi', rarity:'R', element:'Light', description:'빛의 신호를 수집하는 탐사원', hair:'#ffe99b', accent:'#ff9ed6'},
+    {id:'nyx', name:'Nyx', rarity:'SSR', element:'Ice', description:'고요한 밤의 신호를 해석하는 비밀 분석가', hair:'#4c465d', accent:'#cba7ff', image:'assets/characters/nyx.png'},
+    {id:'runa', name:'Runa', rarity:'SR', element:'Fire', description:'불꽃 인장을 지닌 자유로운 차원 여행자', hair:'#c96c6a', accent:'#f372b8', image:'assets/characters/runa.png'},
+    {id:'illeg', name:'일레그', rarity:'SSR', element:'Light', description:'빛나는 리본 신호를 추적하는 에너지 조율사', hair:'#ffe0a0', accent:'#ffd15e', image:'assets/characters/illeg.png'}
+  ];
+  const byId = id => characters.find(c => c.id === id);
+  const cleanState = () => ({started:false, owned:['sola'], selected:'sola', unlimited:true});
+  function load() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(KEY)); const d = cleanState();
+      if (!raw || typeof raw !== 'object') return d;
+      d.started = !!raw.started;
+      d.owned = Array.isArray(raw.owned) ? [...new Set(raw.owned.filter(id => byId(id)))] : d.owned;
+      if (!d.owned.length) d.owned = ['sola'];
+      d.selected = d.owned.includes(raw.selected) ? raw.selected : d.owned[0];
+      // This MVP now uses unlimited credits; old saved balances are intentionally migrated.
+      d.unlimited = true;
+      return d;
+    } catch (_) { return cleanState(); }
+  }
+  let state = load();
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (_) {} };
+  let screen = state.started ? 'main' : 'title', hover = '', message = '', messageUntil = 0, result = null, transition = 0, last = performance.now();
+  let W=0,H=0,DPR=1, hitboxes=[];
+  const imageCache = new Map();
+  function characterImage(path) { if (!path) return null; if (!imageCache.has(path)) { const img = new Image(); img.src = path; imageCache.set(path,img); } return imageCache.get(path); }
+  function resize() { DPR = Math.min(devicePixelRatio || 1, 2); W=innerWidth; H=innerHeight; canvas.width=W*DPR; canvas.height=H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0); }
+  addEventListener('resize', resize); resize();
+  function roundRect(x,y,w,h,r=14) { ctx.beginPath(); ctx.roundRect(x,y,w,h,r); }
+  function txt(t,x,y,size=16,color='#fff',align='left',weight='500') { ctx.font=`${weight} ${size}px system-ui, sans-serif`; ctx.fillStyle=color; ctx.textAlign=align; ctx.textBaseline='middle'; ctx.fillText(t,x,y); }
+  function panel(x,y,w,h,alpha=.74) { ctx.save(); ctx.fillStyle=`rgba(8,13,31,${alpha})`; ctx.strokeStyle='rgba(174,222,255,.32)'; ctx.lineWidth=1; roundRect(x,y,w,h,18); ctx.fill(); ctx.stroke(); ctx.restore(); }
+  function glow(color, blur=20) { ctx.shadowColor=color; ctx.shadowBlur=blur; }
+  function button(id,x,y,w,h,label,sub,color='#68e4ff') { hitboxes.push({id,x,y,w,h}); const on=hover===id; ctx.save(); glow(color,on?24:11); ctx.fillStyle=on?'rgba(36,76,104,.94)':'rgba(11,22,45,.88)'; ctx.strokeStyle=color; ctx.lineWidth=on?2:1; roundRect(x,y,w,h,14); ctx.fill(); ctx.stroke(); ctx.restore(); txt(label,x+w/2,y+h*.42,16,'#fff','center','800'); txt(sub,x+w/2,y+h*.68,11,color,'center','700'); }
+  function background(t) {
+    const g=ctx.createLinearGradient(0,0,W,H); g.addColorStop(0,'#101334'); g.addColorStop(.55,'#080d24'); g.addColorStop(1,'#16112b'); ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    ctx.save(); ctx.globalAlpha=.35;
+    for(let i=0;i<24;i++){ const x=(i*137+43)%W, y=(i*83+19)%H; ctx.fillStyle=i%3?'#80cfff':'#ff86bf'; ctx.beginPath(); ctx.arc(x,y,1+(i%3),0,Math.PI*2); ctx.fill(); }
+    ctx.strokeStyle='rgba(105,182,255,.13)'; ctx.lineWidth=1; for(let x=-H;x<W;x+=70){ctx.beginPath();ctx.moveTo(x,H);ctx.lineTo(x+H,0);ctx.stroke();}
+    ctx.globalAlpha=.18; ctx.fillStyle='#4d9eff'; for(let i=0;i<9;i++){ let x=i*W/8; ctx.fillRect(x,H*.55-(i%3)*30,Math.max(12,W/18),H*.45); } ctx.restore();
+    ctx.fillStyle='rgba(3,5,16,.42)'; ctx.fillRect(0,0,W,H);
+  }
+  function characterArt(c,cx,base,scale=1,dim=false) {
+    const e=COLORS[c.element], bob=Math.sin(performance.now()/600)*5*scale; ctx.save(); ctx.translate(cx,base+bob); ctx.scale(scale,scale); ctx.globalAlpha=dim?.28:1;
+    const suppliedArt=characterImage(c.image);
+    if (suppliedArt && suppliedArt.complete && suppliedArt.naturalWidth) { const h=470, w=h*suppliedArt.naturalWidth/suppliedArt.naturalHeight; ctx.save(); glow(e,32); ctx.drawImage(suppliedArt,-w/2,-h,w,h); ctx.restore(); ctx.restore(); return; }
+    // glow aura, hair, face and stylized full-body placeholder—no external art required
+    ctx.save(); glow(e,40); ctx.fillStyle=e+'33'; ctx.beginPath(); ctx.ellipse(0,-150,92,148,0,0,Math.PI*2); ctx.fill(); ctx.restore();
+    ctx.fillStyle='#10152e'; roundRect(-56,-110,112,190,30); ctx.fill();
+    ctx.fillStyle=c.hair; ctx.beginPath(); ctx.arc(0,-165,58,0,Math.PI*2); ctx.fill(); ctx.fillRect(-55,-162,110,46);
+    ctx.fillStyle='#ffd4c8'; ctx.beginPath(); ctx.arc(0,-150,42,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#25233d'; ctx.fillRect(-29,-158,16,5); ctx.fillRect(13,-158,16,5); ctx.fillStyle='#e7749c'; ctx.fillRect(-9,-132,18,4);
+    ctx.fillStyle=c.accent; ctx.beginPath(); ctx.moveTo(-61,-94);ctx.lineTo(61,-94);ctx.lineTo(45,37);ctx.lineTo(-45,37);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#161a36'; ctx.fillRect(-45,-88,90,92); ctx.fillStyle=e; ctx.fillRect(-7,-88,14,92);
+    ctx.strokeStyle='#ffd4c8'; ctx.lineWidth=16; ctx.lineCap='round'; ctx.beginPath();ctx.moveTo(-46,-74);ctx.lineTo(-77,-8);ctx.moveTo(46,-74);ctx.lineTo(77,-8);ctx.stroke();
+    ctx.strokeStyle='#20213c';ctx.lineWidth=26;ctx.beginPath();ctx.moveTo(-25,28);ctx.lineTo(-34,144);ctx.moveTo(25,28);ctx.lineTo(34,144);ctx.stroke();
+    ctx.strokeStyle=e;ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(-82,40);ctx.lineTo(-120,94);ctx.moveTo(82,40);ctx.lineTo(120,94);ctx.stroke();ctx.restore();
+  }
+  function header(title,sub) { txt(title, W/2, 45, 22, '#fff','center','900'); txt(sub, W/2, 70, 11,'#82cfff','center','800'); }
+  function main() { const c=byId(state.selected); characterArt(c,W/2,H*.68,Math.min(1.35,H/720),false);
+    const bh=70, m=Math.max(12,W*.035), gap=Math.max(8,W*.018), bw=Math.min(210,(W-m*2-gap*2)/3), y=H-bh-m, centerX=m+bw+gap;
+    button('collection',m,y,bw,bh,'CHARACTERS','캐릭터', '#75dfff');
+    panel(centerX,y,bw,bh,.82); ctx.save(); glow(RARITY[c.rarity],12); ctx.strokeStyle=RARITY[c.rarity]; ctx.lineWidth=1.5; roundRect(centerX,y,bw,bh,14); ctx.stroke(); ctx.restore(); txt(c.name.toUpperCase(),centerX+bw/2,y+27,Math.min(20,bw*.12),'#fff','center','900'); txt(c.rarity+'  ·  '+c.element.toUpperCase(),centerX+bw/2,y+52,Math.min(11,bw*.065),RARITY[c.rarity],'center','800');
+    button('summon',centerX+bw+gap,y,bw,bh,'SUMMON','캐릭터 뽑기','#ff83bd'); txt('NEON ASTRIA',18,28,12,'#9ddaff','left','900'); txt('✦ ∞', W-18,28,15,'#ffe382','right','800'); }
+  function collection() { header('CHARACTER ARCHIVE','보유 캐릭터를 선택하면 메인으로 돌아갑니다'); const cols=W<560?2:3, gap=14, cardW=Math.min(190,(W-48-gap*(cols-1))/cols), rows=Math.ceil(characters.length/cols), cardH=Math.min(205,(H-170-gap*(rows-1))/rows); const allW=cols*cardW+(cols-1)*gap, startX=(W-allW)/2; const startY=92;
+    characters.forEach((c,i)=>{const x=startX+(i%cols)*(cardW+gap),y=startY+Math.floor(i/cols)*(cardH+gap),owned=state.owned.includes(c.id),selected=state.selected===c.id, compact=cardH<170; hitboxes.push({id:'char:'+c.id,x,y,w:cardW,h:cardH}); panel(x,y,cardW,cardH,owned?.84:.6); if(selected){ctx.save();glow('#fff',20);ctx.strokeStyle='#fff';ctx.lineWidth=2;roundRect(x,y,cardW,cardH,18);ctx.stroke();ctx.restore();} characterArt(c,x+cardW/2,y+cardH*.63,compact?.30:.45,!owned); txt(owned?c.name:'LOCKED',x+13,y+cardH-(compact?31:42),compact?13:16,owned?'#fff':'#7d879c','left','800'); txt(owned?(c.rarity+' · '+c.element):'미획득',x+13,y+cardH-17,10,owned?RARITY[c.rarity]:'#6d7487','left','800'); if(!owned) txt('🔒',x+cardW-18,y+22,14,'#fff','center'); }); button('back',W/2-72,H-62,144,44,'BACK','돌아가기','#8fb7db'); }
+  function summon() { header('CHARACTER SUMMON','별빛 신호에서 새로운 동료를 영입하세요'); const c=byId('nyx'); characterArt(c,W*.28,H*.72,Math.min(.95,H/760)); panel(W*.52,126,Math.min(W*.42,420),Math.min(360,H*.5)); const px=W*.52+28; txt('ASTRAL SIGNAL',px,164,15,'#ffb0d6','left','900'); txt('SSR 5%     SR 25%     R 70%',px,194,13,'#e0eaff','left','700'); txt('보유 재화',px,236,12,'#a9b7d0','left'); txt('✦ ∞',px,267,29,'#ffe482','left','900'); txt('무제한 소환 모드',px,300,12,'#83f5c0','left','800'); const w=Math.min(170,(Math.min(W*.42,420)-70)/2); button('pull1',px,330,w,58,'SUMMON ×1','무료','#ff86c1'); button('pull10',px+w+14,330,w,58,'SUMMON ×10','무료','#ffd76a'); button('back',W/2-72,H-62,144,44,'BACK','돌아가기','#8fb7db'); }
+  function resultScreen() { header(result.length===1?'SIGNAL ACQUIRED':'SUMMON RESULTS', result.length===1?'획득 결과':'획득한 신호 10개'); const cols=result.length===1?1:5, cw=result.length===1?Math.min(250,W-48):Math.min(150,(W-48-(cols-1)*8)/cols), ch=result.length===1?Math.min(330,H-190):Math.min(205,(H-190-12)/2), gap=result.length===1?12:8, allW=cols*cw+(cols-1)*gap, sx=(W-allW)/2, sy=result.length===1?100:102, compact=result.length>1;
+    result.forEach((r,i)=>{let x=sx+(i%cols)*(cw+gap), y=sy+Math.floor(i/cols)*(ch+gap); panel(x,y,cw,ch,.85); ctx.save();glow(RARITY[r.c.rarity],r.c.rarity==='SSR'?28:13);ctx.strokeStyle=RARITY[r.c.rarity];roundRect(x,y,cw,ch,14);ctx.stroke();ctx.restore(); characterArt(r.c,x+cw/2,y+(compact?ch*.63:ch*.64),compact?Math.min(.41,cw/175):.72); txt(r.c.rarity,x+cw/2,y+20,compact?10:19,RARITY[r.c.rarity],'center','900'); txt(r.c.name.toUpperCase(),x+cw/2,y+ch-(compact?28:54),compact?Math.max(8,cw/10):21,'#fff','center','900'); if(!compact)txt(r.duplicate?'DUPLICATE · 이미 보유':'NEW · 신규 획득',x+cw/2,y+ch-27,12,r.duplicate?'#ff9c9c':'#83f5c0','center','800'); }); button('confirm',W/2-86,H-62,172,44,'CONFIRM','확인','#7be5ff'); }
+  function title() { const c=byId('sola'); characterArt(c,W/2,H*.73,Math.min(1.2,H/720)); txt('NEON ASTRIA',W/2,H*.22,Math.min(42,W*.105),'#fff','center','900'); txt('ORIGINAL CHARACTER COLLECTION RPG',W/2,H*.29,12,'#91dfff','center','800'); button('start',W/2-105,H*.38,210,64,'START','게임 시작','#ff93ca'); }
+  function draw() { hitboxes=[]; background(); if(screen==='title')title(); if(screen==='main')main(); if(screen==='collection')collection(); if(screen==='summon')summon(); if(screen==='result')resultScreen(); if(message && performance.now()<messageUntil){ panel(W/2-170,H*.49-28,340,56,.93);txt(message,W/2,H*.49,14,'#fff','center','800'); } else message=''; }
+  function go(next){screen=next; transition=1;}
+  function notify(t){message=t;messageUntil=performance.now()+1800;}
+  function chooseRarity(){let n=Math.random()*100;return n<5?'SSR':n<30?'SR':'R';}
+  function pull(count){ const out=[]; for(let i=0;i<count;i++){const tier=chooseRarity(), pool=characters.filter(c=>c.rarity===tier);const c=pool[Math.floor(Math.random()*pool.length)], duplicate=state.owned.includes(c.id);if(!duplicate)state.owned.push(c.id);out.push({c,duplicate});} save(); result=out; go('result'); }
+  function click(id){ if(id==='start'){state.started=true;save();go('main');} else if(id==='collection')go('collection'); else if(id==='summon')go('summon'); else if(id==='back')go('main'); else if(id==='pull1')pull(1); else if(id==='pull10')pull(10); else if(id==='confirm')go('summon'); else if(id.startsWith('char:')){let char=byId(id.slice(5));if(state.owned.includes(char.id)){state.selected=char.id;save();go('main');}else notify('아직 영입하지 않은 캐릭터입니다.');} }
+  function pointer(e){ const r=canvas.getBoundingClientRect(),x=(e.clientX-r.left)*W/r.width,y=(e.clientY-r.top)*H/r.height; return {x,y}; }
+  canvas.addEventListener('pointermove',e=>{const p=pointer(e), b=hitboxes.find(b=>p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h);hover=b?b.id:''; canvas.style.cursor=b?'pointer':'default';});
+  canvas.addEventListener('pointerdown',e=>{const p=pointer(e),b=hitboxes.find(b=>p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h);if(b)click(b.id);});
+  function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;transition=Math.max(0,transition-dt*3);draw();if(transition){ctx.fillStyle=`rgba(5,7,19,${transition*.45})`;ctx.fillRect(0,0,W,H);}requestAnimationFrame(loop);} requestAnimationFrame(loop);
+})();
+</script></body></html>
